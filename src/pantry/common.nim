@@ -14,22 +14,19 @@ type
 
   PantryClients* = PantryClient | AsyncPantryClient 
 
-  BaseBasket*[T: PantryClients] = object
+  Basket* = object
     ## A basket stores json
     # TODO: Cache data maybe?
-    client: T
     name*: string
     ttl*: int
 
-  Basket* = BaseBasket[PantryClient] 
-  AsyncBasket* = BaseBasket[AsyncPantryClient] 
-
-  PantryDetails*[T: PantryClients] = object
+  PantryDetails* = object
     ## Contains information about a pantry
     name*, description*: string
     errors*: seq[string]
     notifications*: bool
     percentFull*: int
-    baskets*: Table[string, BaseBasket[T]]
+    baskets*: Table[string, Basket]
 
   PantryError* = object of CatchableError
+

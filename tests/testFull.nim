@@ -21,25 +21,23 @@ suite "Pantry":
       details.name == "Test"
 
 suite "Basket":
-  var basket: Basket
   test "Create":
-    basket = pc.createBasket("demo", %* {
+    pc.create("demo", %* {
       "currTime": time
     })
-    basket = pc.getBasket("demo")
 
   test "Update":
-    check basket.update(%* {
+    check pc.update("demo", %* {
       "foo": "bar"
     })["foo"].getStr() == "bar"
 
   test "Get contents":
-    let data = basket.getData()
+    let data = pc.get("demo")
     check:
       data["currTime"].getStr() == time
       data["foo"].getStr() == "bar"
 
   test "Delete":
-    delete basket
+    pc.delete("demo")
     check not pc.getDetails().baskets.hasKey("demo")
   

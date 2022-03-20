@@ -30,14 +30,13 @@ Information is stored via baskets which is a single JSON object.
 Each pantry can have up to 100 baskets (max size is 1.44mb each)
 
 ```nim
-# You can use the basket object to easily interact with the basket
-let basket = pc.createBasket("test", %* {
+pc.create("test", %* {
   "foo": "bar"
 })
 
 assert basket.getData()["foo"] == %"bar"
 
-let newData = basket.update(%* {
+let newData = pc.update("test", %* {
   "foo": "notBar"
 })
 
