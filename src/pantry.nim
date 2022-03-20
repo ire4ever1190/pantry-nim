@@ -13,21 +13,21 @@ const
   baseURL = "https://getpantry.cloud/apiv1/pantry"
   userAgent = "pantry-nim (0.1.0) [https://github.com/ire4ever1190/pantry-nim]"
 
-proc newPantryClient*(id: string): PantryClient = 
-  ## Creates a Pantry client for sync use
-  PantryClient(
-    id: id.strip(),
-    client: newHttpClient(userAgent = userAgent)
-  )
-
-
 proc fromJsonHook(a: var Table[string, Basket], baskets: JsonNode) =
+  ## Used for converting list of baskets to a table
   for basket in baskets:
     let basketName = basket["name"].getStr()
     a[basketName] = Basket(
       name: basketName,
       ttl: basket["ttl"].getInt()
     )
+
+proc newPantryClient*(id: string): PantryClient = 
+  ## Creates a Pantry client for sync use
+  PantryClient(
+    id: id.strip(),
+    client: newHttpClient(userAgent = userAgent)
+  )
 
 proc newAsyncPantryClient*(id: string): AsyncPantryClient =
   ## Creates a Pantry client for async use
