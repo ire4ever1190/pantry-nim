@@ -2,6 +2,8 @@
 
 Easy SDK for interacting with [Pantry](https://getpantry.cloud/). **This is not an official project of pantry is just fan made**
 
+[Docs here](https://tempdocs.netlify.app/pantry/stable)
+
 #### Examples
 
 (While this examples are synchronous you can use `newAsyncPantryClient` to use async version)
@@ -21,7 +23,7 @@ assert pantry.percentFull < 100 # Make sure we are under the limit
 
 # List all your baskets (They are stored has a table)
 for basket in pantry.values:
-	echo basket.name
+  echo basket.name
 ```
 
 Information is stored via baskets which is a single JSON object.
@@ -30,13 +32,13 @@ Each pantry can have up to 100 baskets (max size is 1.44mb each)
 ```nim
 # You can use the basket object to easily interact with the basket
 let basket = pc.createBasket("test", %* {
-	"foo": "bar"
+  "foo": "bar"
 })
 
 assert basket.getData()["foo"] == %"bar"
 
 let newData = basket.update(%* {
-	"foo": "notBar"
+  "foo": "notBar"
 })
 
 assert newData["foo"] == %"notBar"
