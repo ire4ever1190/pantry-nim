@@ -34,7 +34,7 @@ pc.create("test", %* {
   "foo": "bar"
 })
 
-assert basket.getData()["foo"] == %"bar"
+assert pc.get("test")["foo"] == %"bar"
 
 let newData = pc.update("test", %* {
   "foo": "notBar"
