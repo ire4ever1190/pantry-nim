@@ -1,12 +1,11 @@
 import std/unittest
-import std/strutils
 import std/times
 import std/json
 import pantry
 
 # This is E2E tests. Make sure to include a file called token containing your pantry test ID in the root of the repo
 
-let pc = newPantryClient("token".readFile())
+let pc = newPantryClient("token".readFile(), Retry)
 
 let time = now().format("yyyy-MM-dd hh:mm:ss")
 
