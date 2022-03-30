@@ -33,11 +33,11 @@ proc newBaseClient[T: Clients](id: string, strat: RetryStrategy): BasePantryClie
   else:
     result.client = newHttpClient(userAgent = userAgent)
 
-proc newPantryClient*(id: string, strat: RetryStrategy): PantryClient = 
+proc newPantryClient*(id: string, strat: RetryStrategy = Exception): PantryClient = 
   ## Creates a Pantry client for sync use
   result = newBaseClient[HttpClient](id, strat)
 
-proc newAsyncPantryClient*(id: string, strat: RetryStrategy): AsyncPantryClient =
+proc newAsyncPantryClient*(id: string, strat: RetryStrategy = Exception): AsyncPantryClient =
   ## Creates a Pantry client for async use
   result = newBaseClient[AsyncHttpClient](id, strat)
 
