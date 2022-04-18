@@ -12,9 +12,134 @@ import std/[
 
 include pantry/common
 
+##
+## This library is a small wrapper around `Pantry <https://getpantry.cloud/>`_ which is a simple json storage service.
+##
+## Key information for when following this guide
+##
+## Common terms
+## * **Basket**: A JSON object that you store data in
+## * **Pantry**: A collection of baskets
+##
+## Limitations
+## * Each bucket can only store 1.44mb max
+## * Each pantry can only store 100 buckets max
+## * Each pantry can't be over 100mb in size
+## * Inactive buckets are deleted after 30 days
+##
+## Create a pantry and then you can follow along with the rest of the docs.
+##
+## Creating the client
+## ===================
+##
+## The client is made with either newPantryClient_ or newAsyncPantryClient_ which provide sync and async apis respectively.
+## These clients can be passed a RetryStrategy_ which handles how they handle a timeout
+
+runnableExamples "-r:off":
+  import std/asyncdispatch
+  let 
+    # Create normal sync client that will error on 'too many requests'
+    client = newPantryClient("pantry-id")
+    # Create async client that will sleep and then retry on 'too many requests'
+    aClient = newAsyncPantryClient("pantry-id", strat = Retry)
+
+  try:
+    for i in 1..100:
+      echo client.getDetails()
+  except TooManyPantryRequests:
+    echo "Slow down!"
+
+  proc spamDetails() {.async.} =
+    # This will not error out since it will just sleep if 
+    # making too many requests
+    for i in 1..100:
+      echo await aClient.getDetails()
+      
+  waitFor spamDetails()
+
+# Note: data is pronounced 'data' in the following examples
+
+##
+## Adding Data
+## ===========
+##
+## Buckets can have their data set via the create_ proc
+##
+## .. Warning:: This overwrites any data currently present in the bucket
+
+runnableExamples "-r:off":
+  let client = newPantryClient("pantry-id")
+
+  var data = %* {
+    "lenFilms": 145,
+    "genres": ["Comedy", "Horror"]
+  }
+  # Set the "films" bucket to contain the data
+  client.create("films", data)
+
+  # Reset the bucket so it only contains number of films
+  client.create("films", %* {"lenFilms": 0})
+
+## Getting Data
+## ============
+##
+## Once a bucket has data you can then retrive it at a later date using get_
+
+runnableExamples "-r:off":
+  let client = newPantryClient("pantry-id")
+
+  # See example in adding data to see what this is
+  let films = client.get("films")
+  
+  assert films["lenFilms"].getInt() == 0
+  assert "genres" notin films
+
+## Updating Data
+## =============
+##
+## Buckets can have their contents updated using update_ which means
+## * Values of existing keys are overwritten
+## * Values of new keys are added
+## * Arrays are merged together
+
+runnableExamples "-r:off":
+  let client = newPantryClient("pantry-id")
+
+  # Lets add back in the genres and bump up the number of films
+  discard client.update("films", %* {
+    "genres": ["Comedy", "Horror"],
+    "lenFilms": 99
+  })
+
+  type
+    FilmData = object
+      lenFilms: int
+      genres: seq[string]
+
+  # Now lets add in another genre
+  let newData = client.update("films", %* {
+    "genres": ["Sci-Fi"]
+  }).to(FilmData)
+
+
+  assert newData.lenFilms == 99
+  assert newData.genres == ["Comedy", "Horror", "Sci-Fi"]
+
+## Removing Data
+## =============
+## 
+## Very simple operation, deletes the bucket
+##
+## .. Danger:: Operation cannot be undone, be careful
+
+runnableExamples "-r:off":
+  let client = newPantryClient("pantry-id")
+
+  client.delete("films")
+  
 const 
   baseURL = "https://getpantry.cloud/apiv1/pantry"
-  userAgent = "pantry-nim (0.1.0) [https://github.com/ire4ever1190/pantry-nim]"
+  userAgent = "pantry-nim (0.2.0) [https://github.com/ire4ever1190/pantry-nim]"
 
 proc fromJsonHook(a: var Table[string, Basket], baskets: JsonNode) =
   ## Used for converting list of baskets to a table

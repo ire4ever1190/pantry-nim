@@ -1,8 +1,14 @@
 ## pantry-nim
 
-Easy SDK for interacting with [Pantry](https://getpantry.cloud/). **This is not an official project of pantry is just fan made**
+Easy SDK for interacting with [Pantry](https://getpantry.cloud/). 
+
+**This is not an official project of pantry and is just fan made**
 
 [Docs here](https://tempdocs.netlify.app/pantry/stable)
+
+#### Installation
+
+`nimble install https://github.com/ire4ever1190/pantry-nim`
 
 #### Examples
 
