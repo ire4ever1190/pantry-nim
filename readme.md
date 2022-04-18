@@ -8,7 +8,7 @@ Easy SDK for interacting with [Pantry](https://getpantry.cloud/).
 
 #### Installation
 
-`nimble install https://github.com/ire4ever1190/pantry-nim`
+`nimble install pantry`
 
 #### Examples
 
