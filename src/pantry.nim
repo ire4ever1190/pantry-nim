@@ -141,6 +141,12 @@ const
   baseURL = "https://getpantry.cloud/apiv1/pantry"
   userAgent = "pantry-nim (0.2.0) [https://github.com/ire4ever1190/pantry-nim]"
 
+
+## Using objects instead of JsonNode
+## =================================
+##
+## It is possible to use objects for sending and receiving objects instead of having to work with 
+
 proc fromJsonHook(a: var Table[string, Basket], baskets: JsonNode) =
   ## Used for converting list of baskets to a table
   for basket in baskets:
@@ -195,7 +201,7 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
     let time =  msg[43..75].parse("ddd MMM dd yyyy HH:mm:ss 'GMT'ZZZ") # Get time to make next request
     let sleepTime = (time - now())
     if pc.strat in {Sleep, Retry}:
-      when compiles(await sleepAsync 1):
+      when pc is AsyncPantryClient:
         await sleepAsync int(sleepTime.inMilliseconds)
       else:
         sleep int(sleepTime.inMilliseconds)
@@ -208,7 +214,6 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
         msg: fmt"Too many requests, please wait {sleepTime.inSeconds} seconds"
       )
   else:
-    echo resp.code
     raise (ref PantryError)(msg: msg)
 
 proc updateDetails*(pc: PantryClient | AsyncPantryClient, name, description: string): Future[PantryDetails] {.multisync.} =
@@ -234,6 +239,9 @@ proc create*(pc: PantryClient | AsyncPantryClient, basket: string,
   checkJSON data
   discard await pc.request("/basket/" & basket, HttpPost, $data)
 
+proc create*[T: not JsonNode](pc: PantryClient | AsyncPantryClient, basket: string, data: T) {.multisync.} =
+  ## like `create(AsyncPantryClient, string, JsonNode)`_ except it works with normal objects
+  await pc.create(basket, %*data)
 
 proc update*(pc: PantryClient | AsyncPantryClient, basket: string, newData: JsonNode): Future[JsonNode] {.multisync.} =
   ## Given a basket name, this will update the existing contents and return the contents of the newly updated basket. 
@@ -244,11 +252,20 @@ proc update*(pc: PantryClient | AsyncPantryClient, basket: string, newData: Json
     .await()
     .parseJson()
 
+proc update*[T: not JsonNode](pc: PantryClient | AsyncPantryClient, basket: string, newData: T): Future[T] {.multisync.} =
+  ## Like `update(AsyncPantryClient, string, JsonNode)`_ except data is an object
+  pc.update(basket, %*newData).await().to(T)
+
 proc get*(pc: PantryClient | AsyncPantryClient, basket: string): Future[JsonNode] {.multisync.} =
   ## Given a basket name, return the full contents of the basket.
   result = pc.request("/basket/" & basket, HttpGet)
     .await()
     .parseJson()
+
+proc get*[T](pc: PantryClient | AsyncPantryClient, basket: string, kind: typedesc[T]): Future[T] {.multisync.} =
+  ## Like `create(AsyncPantryClient, string, JsonNode)`_ except it parses the JSON and returns an object
+  result = pc.get(basket).await().to(T)
+
 
 proc delete*(pc: PantryClient | AsyncPantryClient, basket: string) {.multisync.} =
   ## Delete the entire basket. Warning, this action cannot be undone.

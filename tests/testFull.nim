@@ -39,4 +39,19 @@ suite "Basket":
   test "Delete":
     pc.delete("demo")
     check not pc.getDetails().baskets.hasKey("demo")
-  
+
+type 
+  Item = object
+    name: string
+    price: float
+    
+  Order = object
+    time: int
+    items: seq[Item]
+
+test "Objects":
+  var order = Order(time: 123456789, items: @[
+    Item(name: "Soap", price:  0.49),
+    Item(name: "Crisps", price: 0.70)
+  ])
+  pc.create("order", order)
