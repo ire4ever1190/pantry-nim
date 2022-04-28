@@ -38,6 +38,12 @@ type
   TooManyPantryRequests* = object of PantryError
     ## Raised when you are calling pantry too many times (limit is 2 times per second)
 
+  BasketDoesntExist* = object of PantryError
+    ## Raised if you make a request to a basket that doesn't exist
+
+  InvalidPantryID* = object of PantryError
+    ## Raised if you make a request use a pantry ID that is invalid
+
   RetryStrategy* = enum
     ## Strategy to imploy when pantry gives a `too many requests` error
     ## * **Exception**: Throws an exception (default)
