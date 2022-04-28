@@ -7,7 +7,10 @@ import std/[
   jsonutils,
   times,
   strformat,
-  os
+  os,
+  options,
+  typetraits,
+  tables
 ]
 
 include pantry/common
@@ -141,6 +144,54 @@ const
   baseURL = "https://getpantry.cloud/apiv1/pantry"
   userAgent = "pantry-nim (0.2.0) [https://github.com/ire4ever1190/pantry-nim]"
 
+
+## Using objects instead of JsonNode
+## =================================
+##
+## It is possible to use objects for sending and receiving objects instead of having to work with JsonNode.
+## This can be done by just passing an object instead of json like so
+
+runnableExamples "-r:off":
+  type
+    FilmData = object
+      lenFilms: int
+      genres: seq[string]
+  
+  let 
+    client = newPantryClient("pantry-id")
+    data = FilmData(lenFilms: 9, genres: @["Comedy", "Action", "Adventure"])
+
+  # API is the same has before, except you need to specify type when getting
+  client.create("films", data)
+  assert client.get("films", FilmData) == data
+
+## This also allows you to avoid exceptions and get Option[T] return types instead
+
+runnableExamples "-r:off":
+  import std/options
+  let client = newPantryClient("pantry-id")
+
+  # if 'doesntExist' doesn't exist in the pantry then BasketDoesntExist exception
+  # would be thrown 
+  try:
+    discard client.get("doesntExist")
+  except BasketDoesntExist:
+    discard
+
+  # Doesn't need to be JsonNode, any type works
+  let data = client.get("doesntExist", Option[JsonNode])
+  # No exception will be raised if it doesn't exist, but it will be `none`
+  if data.isSome:
+    # Do stuff if the basket exists
+    discard
+  else:
+    # Do stuff if the basket doesn't exist
+    discard
+
+#
+# End of documentation, start of code
+#
+
 proc fromJsonHook(a: var Table[string, Basket], baskets: JsonNode) =
   ## Used for converting list of baskets to a table
   for basket in baskets:
@@ -191,11 +242,24 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
   case resp.code.int
   of 200..299:
     result = msg
+  of 400:
+    # Pantry stuff both 404 and 401 errors into this so we need to parse them out.
+    # This is a bit of a hacky way to do it, maybe ask pantry team why 400 is used?
+    if "does not exist" in msg:
+      raise (ref BasketDoesntExist)(msg: msg)
+    elif "not found" in msg:
+      raise (ref InvalidPantryID)(msg: msg)
+    
   of 429: # Handle too many requests
     let time =  msg[43..75].parse("ddd MMM dd yyyy HH:mm:ss 'GMT'ZZZ") # Get time to make next request
-    let sleepTime = (time - now())
-    if pc.strat in {Sleep, Retry}:
-      when compiles(await sleepAsync 1):
+    let sleepTime = time - now()
+    # Check how to handle the error
+    if pc.strat == Exception or retry == 0:
+      raise (ref TooManyPantryRequests)(
+        msg: fmt"Too many requests, please wait {sleepTime.inSeconds} seconds"
+      )
+    elif pc.strat in {Sleep, Retry}:
+      when pc is AsyncPantryClient:
         await sleepAsync int(sleepTime.inMilliseconds)
       else:
         sleep int(sleepTime.inMilliseconds)
@@ -203,12 +267,7 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
       if pc.strat == Retry and retry > 0:
         result = await pc.request(path, meth, body, retry = retry - 1)
       
-    elif pc.strat == Exception or retry == 0:
-      raise (ref TooManyPantryRequests)(
-        msg: fmt"Too many requests, please wait {sleepTime.inSeconds} seconds"
-      )
   else:
-    echo resp.code
     raise (ref PantryError)(msg: msg)
 
 proc updateDetails*(pc: PantryClient | AsyncPantryClient, name, description: string): Future[PantryDetails] {.multisync.} =
@@ -234,7 +293,6 @@ proc create*(pc: PantryClient | AsyncPantryClient, basket: string,
   checkJSON data
   discard await pc.request("/basket/" & basket, HttpPost, $data)
 
-
 proc update*(pc: PantryClient | AsyncPantryClient, basket: string, newData: JsonNode): Future[JsonNode] {.multisync.} =
   ## Given a basket name, this will update the existing contents and return the contents of the newly updated basket. 
   ## This operation performs a deep merge and will overwrite the values of any existing keys, or append values to nested objects or arrays.
@@ -243,6 +301,8 @@ proc update*(pc: PantryClient | AsyncPantryClient, basket: string, newData: Json
   result = pc.request("/basket/" & basket, HttpPut, $newData)
     .await()
     .parseJson()
+
+
 
 proc get*(pc: PantryClient | AsyncPantryClient, basket: string): Future[JsonNode] {.multisync.} =
   ## Given a basket name, return the full contents of the basket.
@@ -253,6 +313,40 @@ proc get*(pc: PantryClient | AsyncPantryClient, basket: string): Future[JsonNode
 proc delete*(pc: PantryClient | AsyncPantryClient, basket: string) {.multisync.} =
   ## Delete the entire basket. Warning, this action cannot be undone.
   discard await pc.request("/basket/" & basket, HttpDelete)
+
+# 
+# Now we have versions of get/create/update that are generic and take objects
+#
+
+template optionExcept(body: untyped): untyped =
+  # If T is Option[T] then if an exception occurs it will just return `none` instead 
+  # of throwing an exception
+  when T is Option:
+    try:
+      # template await(value: untyped): untyped =
+        # value
+      # bind await
+      body
+    except BasketDoesntExist:
+      discard
+  else:
+    body
+
+proc get*[T](pc: PantryClient | AsyncPantryClient, basket: string, kind: typedesc[T]): Future[T] {.multisync.} =
+  ## Like create_ except it parses the JSON and returns an object
+  optionExcept:
+    result = to(await pc.get(basket), kind)
+
+proc create*[T: not JsonNode](pc: PantryClient | AsyncPantryClient, basket: string, data: T) {.multisync.} =
+  ## like create_ except it works with normal objects
+  optionExcept:
+    await pc.create(basket, %*data)
+  
+proc update*[T: not JsonNode](pc: PantryClient | AsyncPantryClient, basket: string, newData: T): Future[T] {.multisync.} =
+  ## Like update_ except data is an object
+  optionExcept:
+    result = to(await pc.update(basket, %*newData), T)
+
 
 export tables
 export json
