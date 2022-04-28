@@ -9,7 +9,8 @@ import std/[
   strformat,
   os,
   options,
-  typetraits
+  typetraits,
+  tables
 ]
 
 include pantry/common
@@ -147,7 +148,49 @@ const
 ## Using objects instead of JsonNode
 ## =================================
 ##
-## It is possible to use objects for sending and receiving objects instead of having to work with 
+## It is possible to use objects for sending and receiving objects instead of having to work with JsonNode.
+## This can be done by just passing an object instead of json like so
+
+runnableExamples "-r:off":
+  type
+    FilmData = object
+      lenFilms: int
+      genres: seq[string]
+  
+  let 
+    client = newPantryClient("pantry-id")
+    data = FilmData(lenFilms: 9, genres: @["Comedy", "Action", "Adventure"])
+
+  # API is the same has before, except you need to specify type when getting
+  client.create("films", data)
+  assert client.get("films", FilmData) == data
+
+## This also allows you to avoid exceptions and get Option[T] return types instead
+
+runnableExamples "-r:off":
+  import std/options
+  let client = newPantryClient("pantry-id")
+
+  # if 'doesntExist' doesn't exist in the pantry then BasketDoesntExist exception
+  # would be thrown 
+  try:
+    discard client.get("doesntExist")
+  except BasketDoesntExist:
+    discard
+
+  # Doesn't need to be JsonNode, any type works
+  let data = client.get("doesntExist", Option[JsonNode])
+  # No exception will be raised if it doesn't exist, but it will be `none`
+  if data.isSome:
+    # Do stuff if the basket exists
+    discard
+  else:
+    # Do stuff if the basket doesn't exist
+    discard
+
+#
+# End of documentation, start of code
+#
 
 proc fromJsonHook(a: var Table[string, Basket], baskets: JsonNode) =
   ## Used for converting list of baskets to a table
@@ -185,10 +228,6 @@ template checkJSON(json: JsonNode) =
   ## Checks that the json is an object (pantry requires this)
   assert json.kind == JObject, "JSON must be a single object"
 
-template optType(option: untyped): typedesc =
-  ## Returns the type stored inside an option (Expects result to be an option)
-  get(genericParams(option), 0)
-
 proc request(pc: PantryClient | AsyncPantryClient, path: string, 
              meth: HttpMethod, body: string = "", retry = 3): Future[string] {.multisync.} =
   ## Make a request to pantry
@@ -204,7 +243,8 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
   of 200..299:
     result = msg
   of 400:
-    # Pantry stuff both 404 and 401 errors into this so we need to parse them out
+    # Pantry stuff both 404 and 401 errors into this so we need to parse them out.
+    # This is a bit of a hacky way to do it, maybe ask pantry team why 400 is used?
     if "does not exist" in msg:
       raise (ref BasketDoesntExist)(msg: msg)
     elif "not found" in msg:
@@ -212,8 +252,13 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
     
   of 429: # Handle too many requests
     let time =  msg[43..75].parse("ddd MMM dd yyyy HH:mm:ss 'GMT'ZZZ") # Get time to make next request
-    let sleepTime = (time - now())
-    if pc.strat in {Sleep, Retry}:
+    let sleepTime = time - now()
+    # Check how to handle the error
+    if pc.strat == Exception or retry == 0:
+      raise (ref TooManyPantryRequests)(
+        msg: fmt"Too many requests, please wait {sleepTime.inSeconds} seconds"
+      )
+    elif pc.strat in {Sleep, Retry}:
       when pc is AsyncPantryClient:
         await sleepAsync int(sleepTime.inMilliseconds)
       else:
@@ -222,10 +267,6 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
       if pc.strat == Retry and retry > 0:
         result = await pc.request(path, meth, body, retry = retry - 1)
       
-    elif pc.strat == Exception or retry == 0:
-      raise (ref TooManyPantryRequests)(
-        msg: fmt"Too many requests, please wait {sleepTime.inSeconds} seconds"
-      )
   else:
     raise (ref PantryError)(msg: msg)
 
@@ -292,17 +333,17 @@ template optionExcept(body: untyped): untyped =
     body
 
 proc get*[T](pc: PantryClient | AsyncPantryClient, basket: string, kind: typedesc[T]): Future[T] {.multisync.} =
-  ## Like `create(AsyncPantryClient, string, JsonNode)`_ except it parses the JSON and returns an object
+  ## Like create_ except it parses the JSON and returns an object
   optionExcept:
     result = to(await pc.get(basket), kind)
 
 proc create*[T: not JsonNode](pc: PantryClient | AsyncPantryClient, basket: string, data: T) {.multisync.} =
-  ## like `create(AsyncPantryClient, string, JsonNode)`_ except it works with normal objects
+  ## like create_ except it works with normal objects
   optionExcept:
     await pc.create(basket, %*data)
   
 proc update*[T: not JsonNode](pc: PantryClient | AsyncPantryClient, basket: string, newData: T): Future[T] {.multisync.} =
-  ## Like `update(AsyncPantryClient, string, JsonNode)`_ except data is an object
+  ## Like update_ except data is an object
   optionExcept:
     result = to(await pc.update(basket, %*newData), T)
 
