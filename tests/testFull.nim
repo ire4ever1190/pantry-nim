@@ -91,3 +91,6 @@ suite "Invalid inputs":
   test "Option return instead of exception":
     check pc.get("IDontExist", Option[JsonNode]).isNone()
     
+  test "Not passing a json object":
+    expect AssertionDefect:
+      pc.create("array", %*[1, 2, 3])

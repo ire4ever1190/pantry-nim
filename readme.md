@@ -33,7 +33,13 @@ for basket in pantry.values:
 ```
 
 Information is stored via baskets which is a single JSON object.
-Each pantry can have up to 100 baskets (max size is 1.44mb each)
+Each pantry can have up to 100 baskets (max size is 1.44mb each).
+Baskets can be interacted with the following operations
+
+	- `create`: Sets the data of the basket, overwrites existing information
+	- `update`: Updates the information currently in a basket
+	- `get`: Gets the information stored inside a basket
+	- `delete`: Deletes the basket
 
 ```nim
 pc.create("test", %* {
@@ -48,6 +54,26 @@ let newData = pc.update("test", %* {
 
 assert newData["foo"] == %"notBar"
 
-delete basket
+pc.delete("foo")
 ```
 
+Objects can be used instead of `JsonNode` for `create`, `get`, and `update`
+
+```nim
+type
+	User = object
+		id: int
+		email: string
+
+pc.create("admin", User(id: 9, email: "user@example.com"))
+
+assert pc.get("admin", User).email == "user@example.com"
+
+assert pc.update("admin", User(id: 9, email: "admin@example.com")).email == "admin@example.com"
+
+# Can also use option types when getting to avoid errors
+import std/options
+assert pc.get("doesntExst", Option[User]).isNone()
+assert pc.get("admin", Option[User]).isSome()
+
+```
