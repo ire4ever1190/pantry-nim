@@ -61,9 +61,9 @@ Objects can be used instead of `JsonNode` for `create`, `get`, and `update`
 
 ```nim
 type
-	User = object
-		id: int
-		email: string
+  User = object
+    id: int
+    email: string
 
 pc.create("admin", User(id: 9, email: "user@example.com"))
 
