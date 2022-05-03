@@ -36,10 +36,10 @@ Information is stored via baskets which is a single JSON object.
 Each pantry can have up to 100 baskets (max size is 1.44mb each).
 Baskets can be interacted with the following operations
 
-	- `create`: Sets the data of the basket, overwrites existing information
-	- `update`: Updates the information currently in a basket
-	- `get`: Gets the information stored inside a basket
-	- `delete`: Deletes the basket
+- `create`: Sets the data of the basket, overwrites existing information
+- `update`: Updates the information currently in a basket
+- `get`: Gets the information stored inside a basket
+- `delete`: Deletes the basket
 
 ```nim
 pc.create("test", %* {
