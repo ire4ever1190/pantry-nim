@@ -7,8 +7,10 @@ import std/[
   strformat,
   options,
   typetraits,
-  tables
+  tables,
+  sugar
 ]
+import strutils
 
 include pantry/common
 when not usingJS:
@@ -22,13 +24,17 @@ else:
     asyncjs,
     jsffi,
     jsfetch,
-    jsheaders
+    jsheaders,
+    dom
   ]
   import macros
   # Small shim to make multisync procs only async on JS backend
   macro multisync(prc: untyped) = 
-    prc.addPragma(ident"async")
     result = prc
+    # Also remove the first parameter to stop generic binding issues
+    if result.params[1][0].eqIdent("pc"):
+      result.params[1][1] = ident"AsyncPantryClient"
+    result.addPragma(ident"async")
 ##
 ## This library is a small wrapper around `Pantry <https://getpantry.cloud/>`_ which is a simple json storage service.
 ##
@@ -234,7 +240,7 @@ proc newAsyncPantryClient*(id: string, strat: RetryStrategy = Exception): AsyncP
   else:
     result = newBaseClient[void](id, strat)
     
-func createURL(pc: PantryClient | AsyncPantryClient, path: string): string =
+func createURL(pc: PantryClients, path: string): string =
   ## Adds pantry id and path to base path and returns new path
   result = baseURL
   result &= "/"
@@ -254,7 +260,7 @@ when usingJS:
 template checkJSON(json: JsonNode) = 
   ## Checks that the json is an object (pantry requires this)
   assert json.kind == JObject, "JSON must be a single object"
-
+  
 proc request(pc: PantryClient | AsyncPantryClient, path: string, 
              meth: HttpMethod, body: string = "", retry = 3): Future[JsonNode] {.multisync.} =
   ## Make a request to pantry
@@ -268,7 +274,7 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
         "Content-Type": "application/json"
       }
     )
-    let msg = await resp.body
+    let msg: string = await resp.body
   else:
     # Set up fetch request
     var headers = newHeaders()
@@ -285,9 +291,10 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
     )
     let resp = await fetch(url.cstring, options)
     let msg: string = $(await resp.text)
+    echo "l" in msg
   case resp.code.int
   of 200..299:
-    if resp.contentType.string.startsWith("application/json"):
+    if resp.contentType.startsWith("application/json"):
       result = msg.parseJson()
       
   of 400:
@@ -307,13 +314,19 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
         msg: fmt"Too many requests, please wait {sleepTime.inSeconds} seconds"
       )
     elif pc.strat in {Sleep, Retry}:
-      when pc is AsyncPantryClient:
-        await sleepAsync int(sleepTime.inMilliseconds)
+      when not usingJS:
+        when pc is AsyncPantryClient:
+          await sleepAsync int(sleepTime.inMilliseconds)
+        else:
+          sleep int(sleepTime.inMilliseconds)
+          
+        if pc.strat == Retry and retry > 0:
+          result = await pc.request(path, meth, body, retry = retry - 1)
       else:
-        sleep int(sleepTime.inMilliseconds)
-        
-      if pc.strat == Retry and retry > 0:
-        result = await pc.request(path, meth, body, retry = retry - 1)
+        discard setTimeout(proc () =
+          if pc.strat == Retry and retry > 0:
+            result = newPromise(proc (res: proc (x: JsonNode)) = res(await pc.request(path, meth, retry = retry - 1)))
+        , sleepTime.inMilliseconds.int)
       
   else:
     raise (ref PantryError)(msg: msg)
