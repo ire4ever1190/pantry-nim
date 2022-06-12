@@ -274,7 +274,7 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
         "Content-Type": "application/json"
       }
     )
-    let msg: string = await resp.body
+    let msg = await resp.body
   else:
     # Set up fetch request
     var headers = newHeaders()
@@ -287,11 +287,13 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
       fchDefault,
       frpNoReferrer,
       true,
+      referrer = "http://example.com",
       headers = headers
     )
-    let resp = await fetch(url.cstring, options)
-    let msg: string = $(await resp.text)
-    echo "l" in msg
+    let 
+      resp = await fetch(url.cstring, options)
+      msg = $(await resp.text)
+
   case resp.code.int
   of 200..299:
     if resp.contentType.startsWith("application/json"):
@@ -323,9 +325,12 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
         if pc.strat == Retry and retry > 0:
           result = await pc.request(path, meth, body, retry = retry - 1)
       else:
+        # Timer is only way to sleep in JS, makes a timer which then returns a promise that
+        # will contain the value of the new attempt
         discard setTimeout(proc () =
           if pc.strat == Retry and retry > 0:
-            result = newPromise(proc (res: proc (x: JsonNode)) = discard pc.request(path, meth, retry = retry - 1).then(res))
+            result = newPromise do (res: proc (x: JsonNode)):
+               discard pc.request(path, meth, retry = retry - 1).then(res)
         , sleepTime.inMilliseconds.int)
       
   else:
