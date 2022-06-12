@@ -325,7 +325,7 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
       else:
         discard setTimeout(proc () =
           if pc.strat == Retry and retry > 0:
-            result = newPromise(proc (res: proc (x: JsonNode)) = res(await pc.request(path, meth, retry = retry - 1)))
+            result = newPromise(proc (res: proc (x: JsonNode)) = discard pc.request(path, meth, retry = retry - 1).then(res))
         , sleepTime.inMilliseconds.int)
       
   else:
