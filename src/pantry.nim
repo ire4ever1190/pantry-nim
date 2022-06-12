@@ -1,20 +1,34 @@
+from httpcore import HttpMethod
 import std/[
-  httpclient,
-  asyncdispatch,
-  httpcore,
   strutils,
   json,
   jsonutils,
   times,
   strformat,
-  os,
   options,
   typetraits,
   tables
 ]
 
 include pantry/common
-
+when not usingJS:
+  import std/[
+    asyncdispatch,
+    httpclient,
+    os
+  ]
+else:
+  import std/[
+    asyncjs,
+    jsffi,
+    jsfetch,
+    jsheaders
+  ]
+  import macros
+  # Small shim to make multisync procs only async on JS backend
+  macro multisync(prc: untyped) = 
+    prc.addPragma(ident"async")
+    result = prc
 ##
 ## This library is a small wrapper around `Pantry <https://getpantry.cloud/>`_ which is a simple json storage service.
 ##
@@ -37,7 +51,9 @@ include pantry/common
 ##
 ## The client is made with either newPantryClient_ or newAsyncPantryClient_ which provide sync and async apis respectively.
 ## These clients can be passed a RetryStrategy_ which handles how they handle a timeout
-
+##
+## .. Info:: only newAsyncPantryClient works when using JS backend
+##
 runnableExamples "-r:off":
   import std/asyncdispatch
   let 
@@ -139,10 +155,6 @@ runnableExamples "-r:off":
   let client = newPantryClient("pantry-id")
 
   client.delete("films")
-  
-const 
-  baseURL = "https://getpantry.cloud/apiv1/pantry"
-  userAgent = "pantry-nim (0.2.0) [https://github.com/ire4ever1190/pantry-nim]"
 
 
 ## Using objects instead of JsonNode
@@ -204,19 +216,24 @@ proc fromJsonHook(a: var Table[string, Basket], baskets: JsonNode) =
 proc newBaseClient[T: Clients](id: string, strat: RetryStrategy): BasePantryClient[T] =
   result.id = id.strip()
   result.strat = strat
-  when T is AsyncHttpClient:
-    result.client = newAsyncHttpClient(userAgent = userAgent)
-  else:
-    result.client = newHttpClient(userAgent = userAgent)
+  when not usingJS:
+    when T is AsyncHttpClient:
+      result.client = newAsyncHttpClient(userAgent = userAgent)
+    elif T is HttpClient:
+      result.client = newHttpClient(userAgent = userAgent)
 
-proc newPantryClient*(id: string, strat: RetryStrategy = Exception): PantryClient = 
-  ## Creates a Pantry client for sync use
-  result = newBaseClient[HttpClient](id, strat)
+when not usingJS:
+  proc newPantryClient*(id: string, strat: RetryStrategy = Exception): PantryClient = 
+    ## Creates a Pantry client for sync use
+    result = newBaseClient[HttpClient](id, strat)
 
 proc newAsyncPantryClient*(id: string, strat: RetryStrategy = Exception): AsyncPantryClient =
   ## Creates a Pantry client for async use
-  result = newBaseClient[AsyncHttpClient](id, strat)
-
+  when not usingJS:
+    result = newBaseClient[AsyncHttpClient](id, strat)
+  else:
+    result = newBaseClient[void](id, strat)
+    
 func createURL(pc: PantryClient | AsyncPantryClient, path: string): string =
   ## Adds pantry id and path to base path and returns new path
   result = baseURL
@@ -224,24 +241,55 @@ func createURL(pc: PantryClient | AsyncPantryClient, path: string): string =
   result &= pc.id
   result &= path
 
+when usingJS:
+  # Helpers for making JS behave like HttpClient
+  template code(resp: Response): cint =
+    resp.status
+
+  template contentType(resp: Response): string =
+    $resp.headers["Content-Type"]
+    
+
+
 template checkJSON(json: JsonNode) = 
   ## Checks that the json is an object (pantry requires this)
   assert json.kind == JObject, "JSON must be a single object"
 
 proc request(pc: PantryClient | AsyncPantryClient, path: string, 
-             meth: HttpMethod, body: string = "", retry = 3): Future[string] {.multisync.} =
+             meth: HttpMethod, body: string = "", retry = 3): Future[JsonNode] {.multisync.} =
   ## Make a request to pantry
-  let resp = await pc.client.request(
-    pc.createURL(path),
-    meth, body = body,
-    headers = newHttpHeaders {
-      "Content-Type": "application/json"
-    }
-  )
-  let msg = await resp.body
+  let url = pc.createURL(path)
+  when not usingJS:
+    # Use normal HTTP client
+    let resp = await pc.client.request(
+      url,
+      meth, body = body,
+      headers = newHttpHeaders {
+        "Content-Type": "application/json"
+      }
+    )
+    let msg = await resp.body
+  else:
+    # Set up fetch request
+    var headers = newHeaders()
+    headers["Content-Type"] = "application/json"
+    let options = newFetchOptions(
+      meth,
+      body,
+      fmCors,
+      fcOmit,
+      fchDefault,
+      frpNoReferrer,
+      true,
+      headers = headers
+    )
+    let resp = await fetch(url.cstring, options)
+    let msg: string = $(await resp.text)
   case resp.code.int
   of 200..299:
-    result = msg
+    if resp.contentType.string.startsWith("application/json"):
+      result = msg.parseJson()
+      
   of 400:
     # Pantry stuff both 404 and 401 errors into this so we need to parse them out.
     # This is a bit of a hacky way to do it, maybe ask pantry team why 400 is used?
@@ -277,14 +325,12 @@ proc updateDetails*(pc: PantryClient | AsyncPantryClient, name, description: str
       "description": description
     })
     .await()
-    .parseJson()
     .jsonTo(PantryDetails)
 
 proc getDetails*(pc: PantryClient | AsyncPantryClient): Future[PantryDetails] {.multisync.} =
   ## Returns details for current pantry
   result = pc.request("", HttpGet)
     .await()
-    .parseJson()
     .jsonTo(PantryDetails)
   
 proc create*(pc: PantryClient | AsyncPantryClient, basket: string,
@@ -298,17 +344,11 @@ proc update*(pc: PantryClient | AsyncPantryClient, basket: string, newData: Json
   ## This operation performs a deep merge and will overwrite the values of any existing keys, or append values to nested objects or arrays.
   ## Returns the updated data.
   checkJSON newData
-  result = pc.request("/basket/" & basket, HttpPut, $newData)
-    .await()
-    .parseJson()
-
-
+  result = await pc.request("/basket/" & basket, HttpPut, $newData)
 
 proc get*(pc: PantryClient | AsyncPantryClient, basket: string): Future[JsonNode] {.multisync.} =
   ## Given a basket name, return the full contents of the basket.
-  result = pc.request("/basket/" & basket, HttpGet)
-    .await()
-    .parseJson()
+  result = await pc.request("/basket/" & basket, HttpGet)
 
 proc delete*(pc: PantryClient | AsyncPantryClient, basket: string) {.multisync.} =
   ## Delete the entire basket. Warning, this action cannot be undone.
@@ -323,11 +363,10 @@ template optionExcept(body: untyped): untyped =
   # of throwing an exception
   when T is Option:
     try:
-      # template await(value: untyped): untyped =
-        # value
-      # bind await
       body
     except BasketDoesntExist:
+      # Result is none by default so we don't need to do
+      # anything
       discard
   else:
     body
