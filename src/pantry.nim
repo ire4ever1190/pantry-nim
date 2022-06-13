@@ -282,7 +282,7 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
     let options = newFetchOptions(
       meth,
       body,
-      fmCors,
+      fmNoCors,
       fcOmit,
       fchDefault,
       frpNoReferrer,
@@ -327,11 +327,12 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
       else:
         # Timer is only way to sleep in JS, makes a timer which then returns a promise that
         # will contain the value of the new attempt
-        discard setTimeout(proc () =
-          if pc.strat == Retry and retry > 0:
-            result = newPromise do (res: proc (x: JsonNode)):
-               discard pc.request(path, meth, retry = retry - 1).then(res)
-        , sleepTime.inMilliseconds.int)
+        result = newPromise do (res: proc (x: JsonNode)):
+          discard setTimeout(proc () =
+            echo "retrying"
+            if pc.strat == Retry and retry > 0:
+              discard pc.request(path, meth, retry = retry - 1).then(res)
+          , sleepTime)
       
   else:
     raise (ref PantryError)(msg: msg)
