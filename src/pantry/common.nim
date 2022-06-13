@@ -37,7 +37,6 @@ when not usingJS:
     PantryClients* = PantryClient | AsyncPantryClient 
 else:
   type
-    PantryClient* = BasePantryClient[void]
     AsyncPantryClient* =  BasePantryClient[void]
     PantryClients* = AsyncPantryClient
 

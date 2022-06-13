@@ -332,7 +332,7 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
             echo "retrying"
             if pc.strat == Retry and retry > 0:
               discard pc.request(path, meth, retry = retry - 1).then(res)
-          , sleepTime)
+          , sleepTime.inMilliseconds.int)
       
   else:
     raise (ref PantryError)(msg: msg)
