@@ -58,7 +58,7 @@ else:
 ## The client is made with either newPantryClient_ or newAsyncPantryClient_ which provide sync and async apis respectively.
 ## These clients can be passed a RetryStrategy_ which handles how they handle a timeout
 ##
-## .. Info:: only newAsyncPantryClient works when using JS backend
+## .. Info:: only newAsyncPantryClient_ works when using JS backend
 ##
 runnableExamples "-r:off":
   import std/asyncdispatch
@@ -231,14 +231,13 @@ proc newBaseClient[T: Clients](id: string, strat: RetryStrategy): BasePantryClie
 when not usingJS:
   proc newPantryClient*(id: string, strat: RetryStrategy = Exception): PantryClient = 
     ## Creates a Pantry client for sync use
+    ##
+    ## .. Info:: Not available when using JS backend
     result = newBaseClient[HttpClient](id, strat)
 
 proc newAsyncPantryClient*(id: string, strat: RetryStrategy = Exception): AsyncPantryClient =
   ## Creates a Pantry client for async use
-  when not usingJS:
-    result = newBaseClient[AsyncHttpClient](id, strat)
-  else:
-    result = newBaseClient[void](id, strat)
+  result = newBaseClient[when usingJS: void else: AsyncHttpClient](id, strat)
     
 func createURL(pc: PantryClients, path: string): string =
   ## Adds pantry id and path to base path and returns new path
@@ -318,18 +317,17 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
     elif pc.strat in {Sleep, Retry}:
       when not usingJS:
         when pc is AsyncPantryClient:
-          await sleepAsync int(sleepTime.inMilliseconds)
+          await sleepAsync sleepTime.inMilliseconds.int
         else:
-          sleep int(sleepTime.inMilliseconds)
+          sleep sleepTime.inMilliseconds.int
           
         if pc.strat == Retry and retry > 0:
           result = await pc.request(path, meth, body, retry = retry - 1)
       else:
-        # Timer is only way to sleep in JS, makes a timer which then returns a promise that
-        # will contain the value of the new attempt
+        # To imitate sleeping we return a promise which starts a timeout which
+        # fufills the promise with the retry attempt
         result = newPromise do (res: proc (x: JsonNode)):
           discard setTimeout(proc () =
-            echo "retrying"
             if pc.strat == Retry and retry > 0:
               discard pc.request(path, meth, retry = retry - 1).then(res)
           , sleepTime.inMilliseconds.int)
