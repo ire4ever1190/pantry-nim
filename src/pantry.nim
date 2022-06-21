@@ -59,7 +59,8 @@ runnableExamples "-r:off":
       echo await aClient.getDetails()
       
   waitFor spamDetails()
-
+  close client
+  close aClient
 # Note: data is pronounced 'data' in the following examples
 
 ##
@@ -217,7 +218,12 @@ proc newAsyncPantryClient*(id: string, strat: RetryStrategy = Exception): AsyncP
   ## Creates a Pantry client for async use
   result = newBaseClient[AsyncHttpClient](id, strat)
 
-func createURL(pc: PantryClient | AsyncPantryClient, path: string): string =
+proc close*(pc: BasePantryClient) =
+  ## Closes the pantry client. Closing is automatically done
+  ## so you shouldn't need to close this unless you want to close earlier than the GC
+  pc.client.close()
+
+func createURL(pc: BasePantryClient, path: string): string =
   ## Adds pantry id and path to base path and returns new path
   result = baseURL
   result &= "/"
@@ -301,8 +307,6 @@ proc update*(pc: PantryClient | AsyncPantryClient, basket: string, newData: Json
   result = pc.request("/basket/" & basket, HttpPut, $newData)
     .await()
     .parseJson()
-
-
 
 proc get*(pc: PantryClient | AsyncPantryClient, basket: string): Future[JsonNode] {.multisync.} =
   ## Given a basket name, return the full contents of the basket.
