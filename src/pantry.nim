@@ -336,20 +336,34 @@ template optionExcept(body: untyped): untyped =
   else:
     body
 
+
+template wrapData(x): JsonNode =
+  ## Since pantry doesn't allow non objects at top level we need to wrap the type
+  when T isnot object and T isnot ref object:
+    %*{"item": x}
+  else:
+    %*x
+
+template unwrapData(x: JsonNode): untyped =
+  when T isnot object and T isnot ref object:
+    x["item"].to(T)
+  else:
+    x.to(T)
+
 proc get*[T](pc: PantryClient | AsyncPantryClient, basket: string, kind: typedesc[T]): Future[T] {.multisync.} =
   ## Like create_ except it parses the JSON and returns an object
   optionExcept:
-    result = to(await pc.get(basket), kind)
+    result = unwrapData await pc.get(basket)
 
 proc create*[T: not JsonNode](pc: PantryClient | AsyncPantryClient, basket: string, data: T) {.multisync.} =
   ## like create_ except it works with normal objects
   optionExcept:
-    await pc.create(basket, %*data)
+    await pc.create(basket, wrapData(data))
   
 proc update*[T: not JsonNode](pc: PantryClient | AsyncPantryClient, basket: string, newData: T): Future[T] {.multisync.} =
   ## Like update_ except data is an object
   optionExcept:
-    result = to(await pc.update(basket, %*newData), T)
+    result = unwrapData await pc.update(basket, wrapData(newData))
 
 
 export tables

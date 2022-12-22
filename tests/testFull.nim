@@ -71,6 +71,13 @@ suite "Objects":
       items: order.items & Item(name: "PC", price: 800.0)
     )
 
+suite "List wrapping":
+  test "Can send seq":
+    pc.create("numbers", @[1, 2, 3])
+
+  test "Can get seq":
+    check pc.get("numbers", seq[int]) == @[1, 2, 3]
+
 suite "Invalid inputs":
   test "Wrong pantry ID":
     let pc = newPantryClient("invalid-id")
@@ -94,3 +101,4 @@ suite "Invalid inputs":
   test "Not passing a json object":
     expect AssertionDefect:
       pc.create("array", %*[1, 2, 3])
+
