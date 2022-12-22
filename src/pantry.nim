@@ -193,7 +193,7 @@ runnableExamples "-r:off":
 # End of documentation, start of code
 #
 
-proc fromJsonHook(a: var Table[string, Basket], baskets: JsonNode) =
+proc fromJsonHook(a: var Table[string, Basket], baskets: JsonNode, opt = JOptions()) =
   ## Used for converting list of baskets to a table
   for basket in baskets:
     let basketName = basket["name"].getStr()
