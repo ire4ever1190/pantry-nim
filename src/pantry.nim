@@ -235,7 +235,7 @@ template checkJSON(json: JsonNode) =
   assert json.kind == JObject, "JSON must be a single object"
 
 proc request(pc: PantryClient | AsyncPantryClient, path: string, 
-             meth: HttpMethod, body: string = "", retry = 3): Future[string] {.multisync.} =
+             meth: HttpMethod, body: string = "", retry = 3): Future[string] {.gcsafe, multisync.} =
   ## Make a request to pantry
   let resp = await pc.client.request(
     pc.createURL(path),
