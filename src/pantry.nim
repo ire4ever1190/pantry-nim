@@ -40,7 +40,7 @@ include pantry/common
 
 runnableExamples "-r:off":
   import std/asyncdispatch
-  let 
+  let
     # Create normal sync client that will error on 'too many requests'
     client = newPantryClient("pantry-id")
     # Create async client that will sleep and then retry on 'too many requests'
@@ -53,11 +53,11 @@ runnableExamples "-r:off":
     echo "Slow down!"
 
   proc spamDetails() {.async.} =
-    # This will not error out since it will just sleep if 
+    # This will not error out since it will just sleep if
     # making too many requests
     for i in 1..100:
       echo await aClient.getDetails()
-      
+
   waitFor spamDetails()
   close client
   close aClient
@@ -94,7 +94,7 @@ runnableExamples "-r:off":
 
   # See example in adding data to see what this is
   let films = client.get("films")
-  
+
   assert films["lenFilms"].getInt() == 0
   assert "genres" notin films
 
@@ -131,7 +131,7 @@ runnableExamples "-r:off":
 
 ## Removing Data
 ## =============
-## 
+##
 ## Very simple operation, deletes the bucket
 ##
 ## .. Danger:: Operation cannot be undone, be careful
@@ -140,8 +140,8 @@ runnableExamples "-r:off":
   let client = newPantryClient("pantry-id")
 
   client.delete("films")
-  
-const 
+
+const
   baseURL = "https://getpantry.cloud/apiv1/pantry"
   userAgent = "pantry-nim (0.2.0) [https://github.com/ire4ever1190/pantry-nim]"
 
@@ -157,8 +157,8 @@ runnableExamples "-r:off":
     FilmData = object
       lenFilms: int
       genres: seq[string]
-  
-  let 
+
+  let
     client = newPantryClient("pantry-id")
     data = FilmData(lenFilms: 9, genres: @["Comedy", "Action", "Adventure"])
 
@@ -173,7 +173,7 @@ runnableExamples "-r:off":
   let client = newPantryClient("pantry-id")
 
   # if 'doesntExist' doesn't exist in the pantry then BasketDoesntExist exception
-  # would be thrown 
+  # would be thrown
   try:
     discard client.get("doesntExist")
   except BasketDoesntExist:
@@ -210,7 +210,7 @@ proc newBaseClient[T: Clients](id: string, strat: RetryStrategy): BasePantryClie
   else:
     result.client = newHttpClient(userAgent = userAgent)
 
-proc newPantryClient*(id: string, strat: RetryStrategy = Exception): PantryClient = 
+proc newPantryClient*(id: string, strat: RetryStrategy = Exception): PantryClient =
   ## Creates a Pantry client for sync use
   result = newBaseClient[HttpClient](id, strat)
 
@@ -230,11 +230,11 @@ func createURL(pc: BasePantryClient, path: string): string =
   result &= pc.id
   result &= path
 
-template checkJSON(json: JsonNode) = 
+template checkJSON(json: JsonNode) =
   ## Checks that the json is an object (pantry requires this)
   assert json.kind == JObject, "JSON must be a single object"
 
-proc request(pc: PantryClient | AsyncPantryClient, path: string, 
+proc request(pc: PantryClient | AsyncPantryClient, path: string,
              meth: HttpMethod, body: string = "", retry = 3): Future[string] {.gcsafe, multisync.} =
   ## Make a request to pantry
   let resp = await pc.client.request(
@@ -244,6 +244,7 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
       "Content-Type": "application/json"
     }
   )
+  echo resp.headers
   let msg = await resp.body
   case resp.code.int
   of 200..299:
@@ -255,24 +256,23 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
       raise (ref BasketDoesntExist)(msg: msg)
     elif "not found" in msg:
       raise (ref InvalidPantryID)(msg: msg)
-    
+
   of 429: # Handle too many requests
-    let time =  msg[43..75].parse("ddd MMM dd yyyy HH:mm:ss 'GMT'ZZZ") # Get time to make next request
-    let sleepTime = time - now()
+    let sleepTime = resp.headers["retry-after"].parseInt()
     # Check how to handle the error
     if pc.strat == Exception or retry == 0:
       raise (ref TooManyPantryRequests)(
-        msg: fmt"Too many requests, please wait {sleepTime.inSeconds} seconds"
+        msg: fmt"Too many requests, please wait {sleepTime} seconds"
       )
     elif pc.strat in {Sleep, Retry}:
       when pc is AsyncPantryClient:
-        await sleepAsync int(sleepTime.inMilliseconds)
+        await sleepAsync sleepTime * 1000
       else:
-        sleep int(sleepTime.inMilliseconds)
-        
+        sleep sleepTime * 1000
+
       if pc.strat == Retry and retry > 0:
         result = await pc.request(path, meth, body, retry = retry - 1)
-      
+
   else:
     raise (ref PantryError)(msg: msg)
 
@@ -292,7 +292,7 @@ proc getDetails*(pc: PantryClient | AsyncPantryClient): Future[PantryDetails] {.
     .await()
     .parseJson()
     .jsonTo(PantryDetails)
-  
+
 proc create*(pc: PantryClient | AsyncPantryClient, basket: string,
                    data: JsonNode) {.multisync.} =
   ## Creates a basket in a pantry. If the basket already exists then it overwrites it
@@ -300,7 +300,7 @@ proc create*(pc: PantryClient | AsyncPantryClient, basket: string,
   discard await pc.request("/basket/" & basket, HttpPost, $data)
 
 proc update*(pc: PantryClient | AsyncPantryClient, basket: string, newData: JsonNode): Future[JsonNode] {.multisync.} =
-  ## Given a basket name, this will update the existing contents and return the contents of the newly updated basket. 
+  ## Given a basket name, this will update the existing contents and return the contents of the newly updated basket.
   ## This operation performs a deep merge and will overwrite the values of any existing keys, or append values to nested objects or arrays.
   ## Returns the updated data.
   checkJSON newData
@@ -318,12 +318,12 @@ proc delete*(pc: PantryClient | AsyncPantryClient, basket: string) {.multisync.}
   ## Delete the entire basket. Warning, this action cannot be undone.
   discard await pc.request("/basket/" & basket, HttpDelete)
 
-# 
+#
 # Now we have versions of get/create/update that are generic and take objects
 #
 
 template optionExcept(body: untyped): untyped =
-  # If T is Option[T] then if an exception occurs it will just return `none` instead 
+  # If T is Option[T] then if an exception occurs it will just return `none` instead
   # of throwing an exception
   when T is Option:
     try:
@@ -359,7 +359,7 @@ proc create*[T: not JsonNode](pc: PantryClient | AsyncPantryClient, basket: stri
   ## like create_ except it works with normal objects
   optionExcept:
     await pc.create(basket, wrapData(data))
-  
+
 proc update*[T: not JsonNode](pc: PantryClient | AsyncPantryClient, basket: string, newData: T): Future[T] {.multisync.} =
   ## Like update_ except data is an object
   optionExcept:
