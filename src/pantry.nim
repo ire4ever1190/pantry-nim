@@ -1,3 +1,5 @@
+{.define: ssl.}
+
 import std/[
   httpclient,
   asyncdispatch,
