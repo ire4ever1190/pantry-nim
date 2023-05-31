@@ -246,7 +246,6 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
       "Content-Type": "application/json"
     }
   )
-  echo resp.headers
   let msg = await resp.body
   case resp.code.int
   of 200..299:
