@@ -4,7 +4,7 @@ Easy SDK for interacting with [Pantry](https://getpantry.cloud/).
 
 **This is not an official project of pantry and is just fan made**
 
-[Docs here](https://tempdocs.netlify.app/pantry/stable)
+[Docs here](https://ire4ever1190.github.io/pantry-nim/pantry)
 
 #### Installation
 

@@ -1,7 +1,8 @@
 on:
   push:
     branches:
-      - master
+      - master # Replace this with your main branch
+  workflow_dispatch: # Enable manually rebuilding docs
 
 jobs:
   deploy:
