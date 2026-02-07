@@ -16,7 +16,7 @@ type
 
   AsyncPantryClient* = BasePantryClient[AsyncHttpClient]
 
-  PantryClients* = PantryClient | AsyncPantryClient 
+  PantryClients* = PantryClient | AsyncPantryClient
 
   Basket* = object
     ## A basket stores json
@@ -36,6 +36,7 @@ type
 
   TooManyPantryRequests* = object of PantryError
     ## Raised when you are calling pantry too many times (limit is 2 times per second)
+    retryAfter*: int ## Should retry after this many seconds
 
   BasketDoesntExist* = object of PantryError
     ## Raised if you make a request to a basket that doesn't exist
@@ -51,4 +52,3 @@ type
     Exception
     Retry
     Sleep
-

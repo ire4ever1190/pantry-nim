@@ -253,17 +253,22 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
   of 400:
     # Pantry stuff both 404 and 401 errors into this so we need to parse them out.
     # This is a bit of a hacky way to do it, maybe ask pantry team why 400 is used?
+    echo msg
     if "does not exist" in msg:
       raise (ref BasketDoesntExist)(msg: msg)
     elif "not found" in msg:
       raise (ref InvalidPantryID)(msg: msg)
 
   of 429: # Handle too many requests
-    let sleepTime = resp.headers["retry-after"].parseInt()
+    # Sometimes pantry doesn't give us a timeout, just sleep for 10
+    let sleepTime = block:
+      let parsedSleep = resp.headers["retry-after"].parseInt()
+      if parsedSleep == 0: 10 else: parsedSleep
     # Check how to handle the error
     if pc.strat == Exception or retry == 0:
       raise (ref TooManyPantryRequests)(
-        msg: fmt"Too many requests, please wait {sleepTime} seconds"
+        msg: fmt"Too many requests, please wait {sleepTime} seconds",
+        retryAfter: sleepTime
       )
     elif pc.strat in {Sleep, Retry}:
       when pc is AsyncPantryClient:
