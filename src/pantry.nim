@@ -253,7 +253,6 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
   of 400:
     # Pantry stuff both 404 and 401 errors into this so we need to parse them out.
     # This is a bit of a hacky way to do it, maybe ask pantry team why 400 is used?
-    echo msg
     if "does not exist" in msg:
       raise (ref BasketDoesntExist)(msg: msg)
     elif "not found" in msg:
