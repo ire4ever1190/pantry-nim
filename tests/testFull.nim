@@ -101,3 +101,18 @@ suite "Invalid inputs":
   test "Not passing a json object":
     expect AssertionDefect:
       pc.create("array", %*[1, 2, 3])
+
+suite "Public baskets":
+  const basket = "public"
+  let data = %* {
+    "currTime": time
+  }
+  pc.create(basket, data)
+
+  test "Can get public ID":
+    check pc.getPublicId(basket) != ""
+
+  test "Can access data from a public ID":
+    check pc.getPublic(pc.getPublicId(basket)) == data
+
+  pc.delete(basket)

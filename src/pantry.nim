@@ -12,7 +12,8 @@ import std/[
   os,
   options,
   typetraits,
-  tables
+  tables,
+  uri
 ]
 
 include pantry/common
@@ -144,8 +145,8 @@ runnableExamples "-r:off":
   client.delete("films")
 
 const
-  baseURL = "https://getpantry.cloud/apiv1/pantry"
-  userAgent = "pantry-nim (0.2.0) [https://github.com/ire4ever1190/pantry-nim]"
+  baseURL = "https://getpantry.cloud/apiv1/".parseUri()
+  userAgent = "pantry-nim (0.4.2) [https://github.com/ire4ever1190/pantry-nim]"
 
 
 ## Using objects instead of JsonNode
@@ -225,22 +226,19 @@ proc close*(pc: BasePantryClient) =
   ## so you shouldn't need to close this unless you want to close earlier than the GC
   pc.client.close()
 
-func createURL(pc: BasePantryClient, path: string): string =
-  ## Adds pantry id and path to base path and returns new path
-  result = baseURL
-  result &= "/"
-  result &= pc.id
-  result &= path
+proc pantryUrl(pc: BasePantryClient): URI =
+  ## Returns a URI that points to the clients pantry
+  baseURL / "pantry" / pc.id
 
 template checkJSON(json: JsonNode) =
   ## Checks that the json is an object (pantry requires this)
   assert json.kind == JObject, "JSON must be a single object"
 
-proc request(pc: PantryClient | AsyncPantryClient, path: string,
+proc request(pc: PantryClient | AsyncPantryClient, path: URI,
              meth: HttpMethod, body: string = "", retry = 3): Future[string] {.gcsafe, multisync.} =
   ## Make a request to pantry
   let resp = await pc.client.request(
-    pc.createURL(path),
+    path,
     meth, body = body,
     headers = newHttpHeaders {
       "Content-Type": "application/json"
@@ -283,7 +281,7 @@ proc request(pc: PantryClient | AsyncPantryClient, path: string,
 
 proc updateDetails*(pc: PantryClient | AsyncPantryClient, name, description: string): Future[PantryDetails] {.multisync.} =
   ## Updates a pantry's details
-  result = pc.request("", HttpPut, $ %* {
+  result = pc.request(pc.pantryUrl(), HttpPut, $ %* {
       "name": name,
       "description": description
     })
@@ -293,7 +291,7 @@ proc updateDetails*(pc: PantryClient | AsyncPantryClient, name, description: str
 
 proc getDetails*(pc: PantryClient | AsyncPantryClient): Future[PantryDetails] {.multisync.} =
   ## Returns details for current pantry
-  result = pc.request("", HttpGet)
+  result = pc.request(pc.pantryUrl(), HttpGet)
     .await()
     .parseJson()
     .jsonTo(PantryDetails)
@@ -302,26 +300,26 @@ proc create*(pc: PantryClient | AsyncPantryClient, basket: string,
                    data: JsonNode) {.multisync.} =
   ## Creates a basket in a pantry. If the basket already exists then it overwrites it
   checkJSON data
-  discard await pc.request("/basket/" & basket, HttpPost, $data)
+  discard await pc.request(pc.pantryUrl / "basket" / basket, HttpPost, $data)
 
 proc update*(pc: PantryClient | AsyncPantryClient, basket: string, newData: JsonNode): Future[JsonNode] {.multisync.} =
   ## Given a basket name, this will update the existing contents and return the contents of the newly updated basket.
   ## This operation performs a deep merge and will overwrite the values of any existing keys, or append values to nested objects or arrays.
   ## Returns the updated data.
   checkJSON newData
-  result = pc.request("/basket/" & basket, HttpPut, $newData)
+  result = pc.request(pc.pantryUrl / "basket" / basket, HttpPut, $newData)
     .await()
     .parseJson()
 
 proc get*(pc: PantryClient | AsyncPantryClient, basket: string): Future[JsonNode] {.multisync.} =
   ## Given a basket name, return the full contents of the basket.
-  result = pc.request("/basket/" & basket, HttpGet)
+  result = pc.request(pc.pantryUrl / "basket" / basket, HttpGet)
     .await()
     .parseJson()
 
 proc delete*(pc: PantryClient | AsyncPantryClient, basket: string) {.multisync.} =
   ## Delete the entire basket. Warning, this action cannot be undone.
-  discard await pc.request("/basket/" & basket, HttpDelete)
+  discard await pc.request(pc.pantryUrl / "basket" / basket, HttpDelete)
 
 #
 # Now we have versions of get/create/update that are generic and take objects
@@ -359,6 +357,23 @@ proc get*[T](pc: PantryClient | AsyncPantryClient, basket: string, kind: typedes
   ## Like create_ except it parses the JSON and returns an object
   optionExcept:
     result = unwrapData await pc.get(basket)
+
+proc getPublicId*(pc: PantryClient | AsyncPantryClient, basket: string): Future[string] {.multisync.} =
+  ## Returns the public ID for a basket. This can be shared with other users without needing authorization via the URL format
+  ## `https://getpantry.cloud/apiv1/public/PUBLIC_BASKET_ID`
+  result = pc.request(pc.pantryUrl / "basket" / basket / "public", HttpGet)
+    .await()
+
+proc getPublic*(pc: PantryClient | AsyncPantryClient, basket: string): Future[JsonNode] {.multisync.} =
+  ## Like [get] but works on public baskets
+  result = pc.request(baseURL / "public" / basket, HttpGet)
+    .await()
+    .parseJson()
+
+proc getPublic*[T](pc: PantryClient | AsyncPantryClient, basket: string, kind: typedesc[T]): Future[T] {.multisync.} =
+  ## Like [getPublic] except it parses the JSON and returns an object
+  optionExcept:
+    result = unwrapData await pc.getPublic(basket)
 
 proc create*[T: not JsonNode](pc: PantryClient | AsyncPantryClient, basket: string, data: T) {.multisync.} =
   ## like create_ except it works with normal objects
