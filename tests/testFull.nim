@@ -41,11 +41,11 @@ suite "Basket":
     pc.delete("demo")
     check not pc.getDetails().baskets.hasKey("demo")
 
-type 
+type
   Item = object
     name: string
     price: float
-    
+
   Order = object
     time: int
     items: seq[Item]
@@ -81,14 +81,14 @@ suite "List wrapping":
 suite "Invalid inputs":
   test "Wrong pantry ID":
     let pc = newPantryClient("invalid-id")
-    
+
     expect InvalidPantryID:
-      pc.create("test", %*{"foo": "bar"}) 
+      pc.create("test", %*{"foo": "bar"})
 
   test "Wrong pantry with wrong pantry ID":
     let pc = newPantryClient("invalid-id")
 
-    expect InvalidPantryID:
+    expect BasketDoesntExist:
       discard pc.get("test")
 
   test "Not found basket name":
@@ -97,8 +97,7 @@ suite "Invalid inputs":
 
   test "Option return instead of exception":
     check pc.get("IDontExist", Option[JsonNode]).isNone()
-    
+
   test "Not passing a json object":
     expect AssertionDefect:
       pc.create("array", %*[1, 2, 3])
-
